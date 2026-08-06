@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>Oops</AssemblyName>
+    <RootNamespace>Oops</RootNamespace>
+    <Version>1.0.0</Version>
+    <Authors>Oops</Authors>
+    <Description>Fix text typed with the wrong keyboard layout (Arabic ↔ English)</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="Resources\KeyboardMap.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
