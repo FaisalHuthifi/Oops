@@ -17,8 +17,6 @@ public sealed class AppSettings
     public bool PlaySound { get; set; }
     public bool ShowNotifications { get; set; } = true;
     public HotkeyPreset HotkeyPreset { get; set; } = HotkeyPreset.CtrlI;
-    public uint HotkeyModifiers { get; set; } = NativeConstants.MOD_CONTROL;
-    public uint HotkeyVirtualKey { get; set; } = 0x49;
 
     public HotkeyConfiguration GetHotkeyConfiguration() => HotkeyPreset switch
     {
@@ -33,12 +31,6 @@ public sealed class AppSettings
             Preset = HotkeyPreset.AltI,
             Modifiers = NativeConstants.MOD_ALT,
             VirtualKey = 0x49
-        },
-        HotkeyPreset.Custom => new HotkeyConfiguration
-        {
-            Preset = HotkeyPreset.Custom,
-            Modifiers = HotkeyModifiers,
-            VirtualKey = HotkeyVirtualKey
         },
         _ => new HotkeyConfiguration
         {

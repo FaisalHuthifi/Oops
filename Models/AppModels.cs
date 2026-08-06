@@ -4,8 +4,7 @@ public enum HotkeyPreset
 {
     CtrlI,
     CtrlShiftI,
-    AltI,
-    Custom
+    AltI
 }
 
 public sealed class HotkeyConfiguration

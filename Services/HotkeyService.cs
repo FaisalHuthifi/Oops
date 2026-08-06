@@ -42,6 +42,12 @@ public sealed class HotkeyService : IDisposable
             HotkeyId,
             _configuration.Modifiers,
             _configuration.VirtualKey);
+
+        if (!_registered)
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"RegisterHotKey failed for modifiers={_configuration.Modifiers} vk={_configuration.VirtualKey}");
+        }
     }
 
     private void Unregister()

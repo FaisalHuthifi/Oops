@@ -40,8 +40,9 @@ public sealed record SelectionInfo
             if (!clipboard.TrySetText(newText))
                 return false;
 
-            Thread.Sleep(20);
+            Thread.Sleep(40);
             NativeInput.TryWmPaste(TargetWindow);
+            Thread.Sleep(20);
             return true;
         }
         finally
@@ -231,21 +232,27 @@ public sealed class SelectionService
         return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
+    private const string CopyProbeMarker = "\uFDD0\uFDD1";
+
     private string? TryGetSelectionViaClipboard(IntPtr targetWindow)
     {
         var snapshot = _clipboard.Capture();
-        var beforeText = _clipboard.TryGetText();
 
         try
         {
+            // Place a unique marker so we can tell whether WM_COPY actually copied a selection.
+            if (!_clipboard.TrySetText(CopyProbeMarker))
+                return null;
+
+            Thread.Sleep(20);
             NativeInput.TryWmCopy(targetWindow);
 
-            for (var attempt = 0; attempt < 6; attempt++)
+            for (var attempt = 0; attempt < 8; attempt++)
             {
                 Thread.Sleep(30);
                 var text = _clipboard.TryGetText();
                 if (!string.IsNullOrWhiteSpace(text) &&
-                    !string.Equals(text, beforeText, StringComparison.Ordinal))
+                    !string.Equals(text, CopyProbeMarker, StringComparison.Ordinal))
                 {
                     return text;
                 }

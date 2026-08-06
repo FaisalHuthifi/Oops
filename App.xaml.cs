@@ -9,6 +9,9 @@ namespace Oops;
 
 public partial class App : Application
 {
+    private const string SingleInstanceMutexName = "Global\\Oops_SingleInstance_v1";
+
+    private static Mutex? _singleInstanceMutex;
     private MessageWindow? _messageWindow;
     private TrayIcon? _trayIcon;
     private HotkeyService? _hotkeyService;
@@ -17,6 +20,18 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        _singleInstanceMutex = new Mutex(true, SingleInstanceMutexName, out var createdNew);
+        if (!createdNew)
+        {
+            System.Windows.MessageBox.Show(
+                "Oops is already running. Check the system tray near the clock.",
+                "Oops",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            Shutdown();
+            return;
+        }
+
         base.OnStartup(e);
 
         _settings = AppSettings.Load();
@@ -95,5 +110,12 @@ public partial class App : Application
         _trayIcon?.Dispose();
         _messageWindow?.Close();
         Shutdown();
+    }
+
+    protected override void OnExit(ExitEventArgs e)
+    {
+        _singleInstanceMutex?.ReleaseMutex();
+        _singleInstanceMutex?.Dispose();
+        base.OnExit(e);
     }
 }

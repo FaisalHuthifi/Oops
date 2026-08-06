@@ -2,7 +2,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path $PSScriptRoot -Parent
-$version = "v1.0.0"
+$version = "v1.0.1"
 $publishDir = Join-Path $root "publish"
 $exe = Join-Path $publishDir "Oops.exe"
 
@@ -39,6 +39,12 @@ gh release create $version $exe `
 ## Oops $version
 
 Fix text typed with the wrong keyboard layout (Arabic <-> English).
+
+### Fixes in v1.0.1
+- Fix clipboard history being wiped (no longer calls Clipboard.Clear)
+- Fix conversion failing when selection matched clipboard content
+- Prevent multiple tray instances from running at once
+- Improve WM_COPY/WM_PASTE reliability across apps
 
 ### How to use
 1. Download **Oops.exe** below

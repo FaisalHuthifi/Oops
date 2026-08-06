@@ -15,14 +15,16 @@ public sealed class ClipboardService
         {
             try
             {
-                if (!Clipboard.ContainsData(DataFormats.Text) &&
+                if (!Clipboard.ContainsData(DataFormats.UnicodeText) &&
+                    !Clipboard.ContainsData(DataFormats.Text) &&
                     !Clipboard.ContainsImage() &&
                     !Clipboard.ContainsFileDropList())
                 {
                     return ClipboardSnapshot.Empty();
                 }
 
-                return new ClipboardSnapshot(Clipboard.GetDataObject());
+                var data = Clipboard.GetDataObject();
+                return data is null ? ClipboardSnapshot.Empty() : new ClipboardSnapshot(data);
             }
             catch
             {
@@ -84,11 +86,10 @@ public sealed class ClipboardService
         {
             try
             {
+                // Never call Clipboard.Clear() — it wipes Windows clipboard history
+                // and can break copy/paste system-wide.
                 if (snapshot.IsEmpty)
-                {
-                    try { Clipboard.Clear(); } catch { }
                     return;
-                }
 
                 if (snapshot.DataObject is not null)
                     Clipboard.SetDataObject(snapshot.DataObject, copy: true);
