@@ -1,4 +1,5 @@
 using System.IO;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using Oops.Models;
@@ -17,11 +18,10 @@ public sealed class TextConverter
 
     private void LoadMapping()
     {
-        var mapPath = Path.Combine(AppContext.BaseDirectory, "Resources", "KeyboardMap.json");
-        if (!File.Exists(mapPath))
+        var json = TryReadMapJson();
+        if (json is null)
             return;
 
-        var json = File.ReadAllText(mapPath);
         var data = JsonSerializer.Deserialize<KeyboardMapData>(json, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
@@ -41,6 +41,21 @@ public sealed class TextConverter
             if (key.Length == 1 && value.Length == 1)
                 _englishToArabic[key[0]] = value[0];
         }
+    }
+
+    private static string? TryReadMapJson()
+    {
+        var mapPath = Path.Combine(AppContext.BaseDirectory, "Resources", "KeyboardMap.json");
+        if (File.Exists(mapPath))
+            return File.ReadAllText(mapPath);
+
+        var assembly = typeof(TextConverter).Assembly;
+        using var stream = assembly.GetManifestResourceStream("Oops.Resources.KeyboardMap.json");
+        if (stream is null)
+            return null;
+
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        return reader.ReadToEnd();
     }
 
     public string Convert(string text)

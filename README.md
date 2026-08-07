@@ -22,11 +22,12 @@ Conversion maps keyboard **positions**, not language meaning. No internet or AI 
 
 ## Download
 
-Download **Oops.exe** from the [latest release](https://github.com/FaisalHuthifi/Oops/releases/latest).
+Download **Oops.exe** (or the zip) from the [latest release](https://github.com/FaisalHuthifi/Oops/releases/latest).
 
 1. Download `Oops.exe`
-2. Run it (look for the tray icon near the clock)
-3. Right-click the tray icon for **Settings** or **Exit**
+2. If Windows blocks it: right-click the file → **Properties** → check **Unblock** → OK
+3. Run it — a notification appears and the tray icon shows near the clock (click the ^ arrow if hidden)
+4. Right-click the tray icon for **Settings** or **Exit**
 
 No installer required. Windows may show SmartScreen on first run — click **More info** → **Run anyway**.
 

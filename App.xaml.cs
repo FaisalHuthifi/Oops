@@ -20,6 +20,23 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        try
+        {
+            StartApplication(e);
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show(
+                $"Oops failed to start:\n\n{ex.Message}",
+                "Oops",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            Shutdown();
+        }
+    }
+
+    private void StartApplication(StartupEventArgs e)
+    {
         _singleInstanceMutex = new Mutex(true, SingleInstanceMutexName, out var createdNew);
         if (!createdNew)
         {
@@ -55,6 +72,9 @@ public partial class App : Application
 
         _trayIcon = new TrayIcon(_settings, ShowSettings, ExitApplication);
         _trayIcon.UpdateEnabledState(_settings.Enabled);
+        _trayIcon.ShowBalloon(
+            "Oops is running",
+            "Look for the icon in the system tray. Select text and press Ctrl+I.");
     }
 
     private void OnHotkeyPressed(object? sender, HotkeyPressedEventArgs e)
