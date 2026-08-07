@@ -1,4 +1,6 @@
 using System.Runtime.InteropServices;
+using System.Windows.Forms;
+using System.Windows.Threading;
 using Oops.Models;
 
 namespace Oops.Services;
@@ -13,18 +15,20 @@ public sealed class HotkeyService : IDisposable
     private const int HotkeyId = 9001;
     private const int WmAppConvert = 0x8001;
 
-    private readonly NativeWindowHost _host;
+    private readonly HotkeyMessageWindow _window;
     private HotkeyConfiguration _configuration;
     private bool _registered;
 
     public event EventHandler<HotkeyPressedEventArgs>? HotkeyPressed;
 
-    public IntPtr WindowHandle => _host.Handle;
+    public IntPtr WindowHandle => _window.Handle;
+
+    public bool IsRegistered => _registered;
 
     public HotkeyService(HotkeyConfiguration configuration)
     {
         _configuration = configuration;
-        _host = new NativeWindowHost(WndProc);
+        _window = new HotkeyMessageWindow(OnHotkeyPressed, OnConvertMessage);
         Register();
     }
 
@@ -38,16 +42,10 @@ public sealed class HotkeyService : IDisposable
     private void Register()
     {
         _registered = RegisterHotKey(
-            _host.Handle,
+            _window.Handle,
             HotkeyId,
             _configuration.Modifiers,
             _configuration.VirtualKey);
-
-        if (!_registered)
-        {
-            System.Diagnostics.Debug.WriteLine(
-                $"RegisterHotKey failed for modifiers={_configuration.Modifiers} vk={_configuration.VirtualKey}");
-        }
     }
 
     private void Unregister()
@@ -55,35 +53,68 @@ public sealed class HotkeyService : IDisposable
         if (!_registered)
             return;
 
-        UnregisterHotKey(_host.Handle, HotkeyId);
+        UnregisterHotKey(_window.Handle, HotkeyId);
         _registered = false;
     }
 
-    private IntPtr WndProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam)
+    private void OnHotkeyPressed()
     {
-        if (msg == NativeConstants.WM_HOTKEY && wParam.ToInt32() == HotkeyId)
-        {
-            var targetWindow = GetForegroundWindow();
-            PostMessage(hwnd, WmAppConvert, targetWindow, IntPtr.Zero);
-            return IntPtr.Zero;
-        }
+        var targetWindow = GetForegroundWindow();
+        PostMessage(_window.Handle, WmAppConvert, targetWindow, IntPtr.Zero);
+    }
 
-        if (msg == WmAppConvert)
+    private void OnConvertMessage(IntPtr targetWindow)
+    {
+        var dispatcher = System.Windows.Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
+        dispatcher.BeginInvoke(() =>
         {
             HotkeyPressed?.Invoke(this, new HotkeyPressedEventArgs
             {
-                TargetWindow = wParam
+                TargetWindow = targetWindow
             });
-            return IntPtr.Zero;
-        }
-
-        return NativeWindowHost.DefWindowProcW(hwnd, msg, wParam, lParam);
+        });
     }
 
     public void Dispose()
     {
         Unregister();
-        _host.Dispose();
+        _window.Dispose();
+    }
+
+    private sealed class HotkeyMessageWindow : NativeWindow, IDisposable
+    {
+        private readonly Action _onHotkey;
+        private readonly Action<IntPtr> _onConvert;
+
+        public HotkeyMessageWindow(Action onHotkey, Action<IntPtr> onConvert)
+        {
+            _onHotkey = onHotkey;
+            _onConvert = onConvert;
+
+            CreateHandle(new CreateParams
+            {
+                Parent = (IntPtr)(-3) // HWND_MESSAGE
+            });
+        }
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == NativeConstants.WM_HOTKEY && m.WParam.ToInt32() == HotkeyId)
+            {
+                _onHotkey();
+                return;
+            }
+
+            if (m.Msg == WmAppConvert)
+            {
+                _onConvert(m.WParam);
+                return;
+            }
+
+            base.WndProc(ref m);
+        }
+
+        public void Dispose() => DestroyHandle();
     }
 
     [DllImport("user32.dll")]

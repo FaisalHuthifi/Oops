@@ -2,7 +2,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path $PSScriptRoot -Parent
-$version = "v1.0.3"
+$version = "v1.0.4"
 $publishDir = Join-Path $root "publish"
 $exe = Join-Path $publishDir "Oops.exe"
 $zip = Join-Path $publishDir "Oops-win-x64.zip"
@@ -58,6 +58,11 @@ gh release create $version $exe $zip `
 ## Oops $version
 
 Fix text typed with the wrong keyboard layout (Arabic <-> English).
+
+### Fixes in v1.0.4
+- Fix Ctrl+I not firing (use WinForms message window for hotkey delivery)
+- Fix clipboard corruption (single WinForms clipboard API, no probe marker)
+- Improve copy/paste and replace reliability across apps
 
 ### Fixes in v1.0.3
 - Fix crash on startup in downloaded single-file exe (replace WPF hidden window with native Win32)

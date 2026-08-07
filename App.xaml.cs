@@ -83,7 +83,18 @@ public partial class App : Application
         _settings = AppSettings.Load();
         _settings.ApplyStartup(_settings.StartWithWindows);
 
+        _trayIcon = new TrayIcon(_settings, ShowSettings, ExitApplication);
+        _trayIcon.UpdateEnabledState(_settings.Enabled);
+
         _hotkeyService = new HotkeyService(_settings.GetHotkeyConfiguration());
+        if (!_hotkeyService.IsRegistered)
+        {
+            _trayIcon.ShowBalloon(
+                "Oops",
+                "Could not register Ctrl+I hotkey. It may be in use by another app.");
+            return;
+        }
+
         _hotkeyService.HotkeyPressed += OnHotkeyPressed;
 
         var clipboard = new ClipboardService();
@@ -94,8 +105,6 @@ public partial class App : Application
             new TextConverter(),
             _settings);
 
-        _trayIcon = new TrayIcon(_settings, ShowSettings, ExitApplication);
-        _trayIcon.UpdateEnabledState(_settings.Enabled);
         _trayIcon.ShowBalloon(
             "Oops is running",
             "Look for the icon in the system tray. Select text and press Ctrl+I.");

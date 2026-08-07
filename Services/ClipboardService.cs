@@ -1,7 +1,6 @@
-using System.Windows;
-using Clipboard = System.Windows.Clipboard;
-using DataFormats = System.Windows.DataFormats;
-using IDataObject = System.Windows.IDataObject;
+using System.Windows.Forms;
+using Clipboard = System.Windows.Forms.Clipboard;
+using IDataObject = System.Windows.Forms.IDataObject;
 
 namespace Oops.Services;
 
@@ -15,8 +14,7 @@ public sealed class ClipboardService
         {
             try
             {
-                if (!Clipboard.ContainsData(DataFormats.UnicodeText) &&
-                    !Clipboard.ContainsData(DataFormats.Text) &&
+                if (!Clipboard.ContainsText() &&
                     !Clipboard.ContainsImage() &&
                     !Clipboard.ContainsFileDropList())
                 {
@@ -86,8 +84,6 @@ public sealed class ClipboardService
         {
             try
             {
-                // Never call Clipboard.Clear() — it wipes Windows clipboard history
-                // and can break copy/paste system-wide.
                 if (snapshot.IsEmpty)
                     return;
 

@@ -55,11 +55,11 @@ internal static class EditControlHelper
 
         if (IsRichEdit(className))
         {
-            _ = SendMessageReplace(hwnd, RichReplaceSel, (IntPtr)1, newText);
+            NativeInput.SendMessageCrossThread(hwnd, RichReplaceSel, (IntPtr)1, newText);
             return true;
         }
 
-        _ = SendMessageReplace(hwnd, EditReplaceSel, (IntPtr)1, newText);
+        NativeInput.SendMessageCrossThread(hwnd, EditReplaceSel, (IntPtr)1, newText);
         return true;
     }
 

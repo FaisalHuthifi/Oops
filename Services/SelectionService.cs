@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Windows.Automation;
@@ -55,25 +54,23 @@ public sealed record SelectionInfo
 public sealed class SelectionService
 {
     private readonly ClipboardService _clipboard;
-    private readonly uint _ownProcessId;
     private readonly IntPtr _ownWindowHandle;
 
     public SelectionService(ClipboardService clipboard, IntPtr ownWindowHandle)
     {
         _clipboard = clipboard;
         _ownWindowHandle = ownWindowHandle;
-        _ownProcessId = (uint)Process.GetCurrentProcess().Id;
     }
 
     public IntPtr ResolveTargetWindow(IntPtr capturedWindow)
     {
-        if (IsOwnWindow(capturedWindow))
+        if (capturedWindow == _ownWindowHandle)
             capturedWindow = IntPtr.Zero;
 
         if (capturedWindow == IntPtr.Zero)
             capturedWindow = GetForegroundWindow();
 
-        if (IsOwnWindow(capturedWindow))
+        if (capturedWindow == _ownWindowHandle)
             return IntPtr.Zero;
 
         return capturedWindow;
@@ -232,30 +229,24 @@ public sealed class SelectionService
         return string.IsNullOrWhiteSpace(text) ? null : text;
     }
 
-    private const string CopyProbeMarker = "\uFDD0\uFDD1";
-
     private string? TryGetSelectionViaClipboard(IntPtr targetWindow)
     {
         var snapshot = _clipboard.Capture();
+        var beforeText = _clipboard.TryGetText() ?? string.Empty;
 
         try
         {
-            // Place a unique marker so we can tell whether WM_COPY actually copied a selection.
-            if (!_clipboard.TrySetText(CopyProbeMarker))
-                return null;
-
-            Thread.Sleep(20);
             NativeInput.TryWmCopy(targetWindow);
 
             for (var attempt = 0; attempt < 8; attempt++)
             {
                 Thread.Sleep(30);
                 var text = _clipboard.TryGetText();
-                if (!string.IsNullOrWhiteSpace(text) &&
-                    !string.Equals(text, CopyProbeMarker, StringComparison.Ordinal))
-                {
+                if (string.IsNullOrWhiteSpace(text))
+                    continue;
+
+                if (!string.Equals(text, beforeText, StringComparison.Ordinal))
                     return text;
-                }
             }
 
             return null;
@@ -264,18 +255,6 @@ public sealed class SelectionService
         {
             _clipboard.Restore(snapshot);
         }
-    }
-
-    private bool IsOwnWindow(IntPtr hwnd)
-    {
-        if (hwnd == IntPtr.Zero)
-            return false;
-
-        if (hwnd == _ownWindowHandle)
-            return true;
-
-        GetWindowThreadProcessId(hwnd, out var processId);
-        return processId == _ownProcessId;
     }
 
     private static string ReadWindowClassName(IntPtr hwnd)
@@ -298,7 +277,4 @@ public sealed class SelectionService
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetParent(IntPtr hWnd);
-
-    [DllImport("user32.dll")]
-    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
 }

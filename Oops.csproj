@@ -9,7 +9,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>Oops</AssemblyName>
     <RootNamespace>Oops</RootNamespace>
-    <Version>1.0.3</Version>
+    <Version>1.0.4</Version>
     <Authors>Oops</Authors>
     <Description>Fix text typed with the wrong keyboard layout (Arabic ↔ English)</Description>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>

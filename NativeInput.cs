@@ -16,6 +16,7 @@ internal static class NativeInput
 
     internal static void TryWmCopy(IntPtr targetWindow)
     {
+        TryFocusWindow(targetWindow);
         var hwnd = ResolveMessageTarget(targetWindow);
         if (hwnd != IntPtr.Zero)
             SendMessageCrossThread(hwnd, NativeConstants.WM_COPY);
@@ -23,10 +24,17 @@ internal static class NativeInput
 
     internal static void TryWmPaste(IntPtr targetWindow)
     {
+        TryFocusWindow(targetWindow);
         var hwnd = ResolveMessageTarget(targetWindow);
         if (hwnd != IntPtr.Zero)
             SendMessageCrossThread(hwnd, NativeConstants.WM_PASTE);
     }
+
+    internal static void SendMessageCrossThread(IntPtr hwnd, int message) =>
+        WithThreadInput(hwnd, () => SendMessage(hwnd, message, IntPtr.Zero, IntPtr.Zero));
+
+    internal static void SendMessageCrossThread(IntPtr hwnd, int message, IntPtr wParam, string lParam) =>
+        WithThreadInput(hwnd, () => SendMessageReplace(hwnd, message, wParam, lParam));
 
     internal static void WaitForHotkeyRelease()
     {
@@ -48,6 +56,12 @@ internal static class NativeInput
         }
     }
 
+    private static void TryFocusWindow(IntPtr targetWindow)
+    {
+        if (targetWindow != IntPtr.Zero)
+            SetForegroundWindow(targetWindow);
+    }
+
     private static IntPtr ResolveMessageTarget(IntPtr targetWindow)
     {
         if (targetWindow == IntPtr.Zero)
@@ -57,7 +71,7 @@ internal static class NativeInput
         return focused != IntPtr.Zero ? focused : targetWindow;
     }
 
-    private static void SendMessageCrossThread(IntPtr hwnd, int message)
+    private static void WithThreadInput(IntPtr hwnd, Action action)
     {
         var targetThreadId = GetWindowThreadProcessId(hwnd, out _);
         var currentThreadId = GetCurrentThreadId();
@@ -68,7 +82,7 @@ internal static class NativeInput
 
         try
         {
-            SendMessage(hwnd, message, IntPtr.Zero, IntPtr.Zero);
+            action();
         }
         finally
         {
@@ -76,6 +90,9 @@ internal static class NativeInput
                 AttachThreadInput(currentThreadId, targetThreadId, false);
         }
     }
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     internal static extern IntPtr GetForegroundWindow();
@@ -97,6 +114,9 @@ internal static class NativeInput
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
+    private static extern IntPtr SendMessageReplace(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct GUITHREADINFO
