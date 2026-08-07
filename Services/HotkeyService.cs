@@ -1,5 +1,4 @@
 using System.Runtime.InteropServices;
-using System.Windows.Interop;
 using Oops.Models;
 
 namespace Oops.Services;
@@ -14,17 +13,18 @@ public sealed class HotkeyService : IDisposable
     private const int HotkeyId = 9001;
     private const int WmAppConvert = 0x8001;
 
-    private readonly HwndSource _source;
+    private readonly NativeWindowHost _host;
     private HotkeyConfiguration _configuration;
     private bool _registered;
 
     public event EventHandler<HotkeyPressedEventArgs>? HotkeyPressed;
 
-    public HotkeyService(HwndSource source, HotkeyConfiguration configuration)
+    public IntPtr WindowHandle => _host.Handle;
+
+    public HotkeyService(HotkeyConfiguration configuration)
     {
-        _source = source;
         _configuration = configuration;
-        _source.AddHook(WndProc);
+        _host = new NativeWindowHost(WndProc);
         Register();
     }
 
@@ -38,7 +38,7 @@ public sealed class HotkeyService : IDisposable
     private void Register()
     {
         _registered = RegisterHotKey(
-            _source.Handle,
+            _host.Handle,
             HotkeyId,
             _configuration.Modifiers,
             _configuration.VirtualKey);
@@ -55,18 +55,16 @@ public sealed class HotkeyService : IDisposable
         if (!_registered)
             return;
 
-        UnregisterHotKey(_source.Handle, HotkeyId);
+        UnregisterHotKey(_host.Handle, HotkeyId);
         _registered = false;
     }
 
-    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    private IntPtr WndProc(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam)
     {
         if (msg == NativeConstants.WM_HOTKEY && wParam.ToInt32() == HotkeyId)
         {
-            // Capture target window immediately — before deferred handler runs.
             var targetWindow = GetForegroundWindow();
             PostMessage(hwnd, WmAppConvert, targetWindow, IntPtr.Zero);
-            handled = true;
             return IntPtr.Zero;
         }
 
@@ -76,16 +74,16 @@ public sealed class HotkeyService : IDisposable
             {
                 TargetWindow = wParam
             });
-            handled = true;
+            return IntPtr.Zero;
         }
 
-        return IntPtr.Zero;
+        return NativeWindowHost.DefWindowProcW(hwnd, msg, wParam, lParam);
     }
 
     public void Dispose()
     {
         Unregister();
-        _source.RemoveHook(WndProc);
+        _host.Dispose();
     }
 
     [DllImport("user32.dll")]

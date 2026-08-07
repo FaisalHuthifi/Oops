@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Forms;
+using System.Windows.Threading;
 using Oops.Services;
 using Oops.Settings;
 using Oops.UI;
@@ -12,7 +13,6 @@ public partial class App : Application
     private const string SingleInstanceMutexName = "Global\\Oops_SingleInstance_v1";
 
     private static Mutex? _singleInstanceMutex;
-    private MessageWindow? _messageWindow;
     private TrayIcon? _trayIcon;
     private HotkeyService? _hotkeyService;
     private ReplaceService? _replaceService;
@@ -20,18 +20,47 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        DispatcherUnhandledException += (_, args) =>
+        {
+            ShowStartupError(args.Exception.Message);
+            args.Handled = true;
+            Shutdown();
+        };
+
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            if (args.ExceptionObject is Exception ex)
+                ShowStartupError(ex.Message);
+        };
+
         try
         {
             StartApplication(e);
         }
         catch (Exception ex)
         {
+            ShowStartupError(ex.Message);
+            Shutdown();
+        }
+    }
+
+    private static void ShowStartupError(string message)
+    {
+        try
+        {
             System.Windows.MessageBox.Show(
-                $"Oops failed to start:\n\n{ex.Message}",
+                $"Oops failed to start:\n\n{message}",
                 "Oops",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
-            Shutdown();
+        }
+        catch
+        {
+            System.Windows.Forms.MessageBox.Show(
+                $"Oops failed to start:\n\n{message}",
+                "Oops",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
         }
     }
 
@@ -54,21 +83,16 @@ public partial class App : Application
         _settings = AppSettings.Load();
         _settings.ApplyStartup(_settings.StartWithWindows);
 
-        _messageWindow = new MessageWindow();
-        _messageWindow.Show();
-
-        var source = _messageWindow.CreateSource();
+        _hotkeyService = new HotkeyService(_settings.GetHotkeyConfiguration());
+        _hotkeyService.HotkeyPressed += OnHotkeyPressed;
 
         var clipboard = new ClipboardService();
-        var selection = new SelectionService(clipboard, _messageWindow.Handle);
+        var selection = new SelectionService(clipboard, _hotkeyService.WindowHandle);
         _replaceService = new ReplaceService(
             clipboard,
             selection,
             new TextConverter(),
             _settings);
-
-        _hotkeyService = new HotkeyService(source, _settings.GetHotkeyConfiguration());
-        _hotkeyService.HotkeyPressed += OnHotkeyPressed;
 
         _trayIcon = new TrayIcon(_settings, ShowSettings, ExitApplication);
         _trayIcon.UpdateEnabledState(_settings.Enabled);
@@ -128,7 +152,6 @@ public partial class App : Application
     {
         _hotkeyService?.Dispose();
         _trayIcon?.Dispose();
-        _messageWindow?.Close();
         Shutdown();
     }
 

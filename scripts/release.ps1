@@ -2,7 +2,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path $PSScriptRoot -Parent
-$version = "v1.0.2"
+$version = "v1.0.3"
 $publishDir = Join-Path $root "publish"
 $exe = Join-Path $publishDir "Oops.exe"
 $zip = Join-Path $publishDir "Oops-win-x64.zip"
@@ -58,6 +58,11 @@ gh release create $version $exe $zip `
 ## Oops $version
 
 Fix text typed with the wrong keyboard layout (Arabic <-> English).
+
+### Fixes in v1.0.3
+- Fix crash on startup in downloaded single-file exe (replace WPF hidden window with native Win32)
+- Extract native libraries correctly in single-file publish
+- Works when run from OneDrive or folders with non-English names
 
 ### Fixes in v1.0.2
 - Embed keyboard map inside the exe (works when only Oops.exe is downloaded)
