@@ -6,19 +6,13 @@ namespace Oops.Services;
 public sealed class ReplaceService
 {
     private readonly SelectionService _selection;
-    private readonly ClipboardService _clipboard;
     private readonly TextConverter _converter;
     private readonly AppSettings _settings;
 
     private IntPtr _targetWindow;
 
-    public ReplaceService(
-        ClipboardService clipboard,
-        SelectionService selection,
-        TextConverter converter,
-        AppSettings settings)
+    public ReplaceService(SelectionService selection, TextConverter converter, AppSettings settings)
     {
-        _clipboard = clipboard;
         _selection = selection;
         _converter = converter;
         _settings = settings;
@@ -42,8 +36,8 @@ public sealed class ReplaceService
             if (converted == selection.Text)
                 return ReplaceResult.Unchanged;
 
-            if (!selection.TryReplace(converted, _clipboard))
-                return ReplaceResult.ClipboardFailed;
+            if (!selection.TryReplace(converted))
+                return ReplaceResult.ReplaceFailed;
 
             if (_settings.PlaySound)
                 SystemSounds.Asterisk.Play();
@@ -63,6 +57,6 @@ public enum ReplaceResult
     NoSelection,
     Unchanged,
     Disabled,
-    ClipboardFailed,
+    ReplaceFailed,
     Failed
 }

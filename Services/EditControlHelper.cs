@@ -19,10 +19,18 @@ internal static class EditControlHelper
     private const int RichGetSelText = WmUser + 75;
 
     internal static bool IsEditClassName(string className) =>
-        className is "Edit" or "RICHEDIT50W" or "RichEditD2DPT";
+        className is "Edit" or "TEdit" or "TMemo" or "ThunderRT6TextBox" || IsRichEdit(className);
 
     internal static bool IsRichEdit(string className) =>
-        className is "RICHEDIT50W" or "RichEditD2DPT";
+        className is "RichEdit" or "RichEdit20A" or "RichEdit20W" or "RICHEDIT50W" or "RichEditD2DPT";
+
+    internal static bool ContainsText(IntPtr hwnd, string text)
+    {
+        if (hwnd == IntPtr.Zero || string.IsNullOrEmpty(text))
+            return false;
+
+        return ReadClassicEditText(hwnd)?.Contains(text, StringComparison.Ordinal) == true;
+    }
 
     internal static SelectionReadResult? ReadSelection(IntPtr hwnd, string className)
     {
@@ -48,19 +56,19 @@ internal static class EditControlHelper
 
     internal static bool TryReplace(IntPtr hwnd, string className, int selStart, int selEnd, string newText)
     {
-        if (hwnd == IntPtr.Zero)
+        if (hwnd == IntPtr.Zero || string.IsNullOrEmpty(newText))
             return false;
 
         SetSelectionRange(hwnd, className, selStart, selEnd);
 
         if (IsRichEdit(className))
-        {
             NativeInput.SendMessageCrossThread(hwnd, RichReplaceSel, (IntPtr)1, newText);
-            return true;
-        }
+        else
+            NativeInput.SendMessageCrossThread(hwnd, EditReplaceSel, (IntPtr)1, newText);
 
-        NativeInput.SendMessageCrossThread(hwnd, EditReplaceSel, (IntPtr)1, newText);
-        return true;
+        SetSelectionRange(hwnd, className, selStart, selStart + newText.Length);
+        var verify = ReadSelection(hwnd, className);
+        return verify is { Text: var actual } && string.Equals(actual, newText, StringComparison.Ordinal);
     }
 
     private static (int Start, int End)? GetSelectionRange(IntPtr hwnd, string className)
@@ -69,11 +77,11 @@ internal static class EditControlHelper
         {
             var start = 0;
             var end = 0;
-            SendMessageRef(hwnd, RichGetSel, ref start, ref end);
+            NativeInput.SendMessageRefCrossThread(hwnd, RichGetSel, ref start, ref end);
             return (start, end);
         }
 
-        var sel = SendMessageInt(hwnd, EditGetSel, IntPtr.Zero, IntPtr.Zero).ToInt32();
+        var sel = NativeInput.SendMessageIntCrossThread(hwnd, EditGetSel, IntPtr.Zero, IntPtr.Zero).ToInt32();
         return (sel & 0xFFFF, (sel >> 16) & 0xFFFF);
     }
 
@@ -83,11 +91,11 @@ internal static class EditControlHelper
         {
             var s = start;
             var e = end;
-            SendMessageRef(hwnd, RichSetSel, ref s, ref e);
+            NativeInput.SendMessageRefCrossThread(hwnd, RichSetSel, ref s, ref e);
             return;
         }
 
-        _ = SendMessageInt(hwnd, EditSetSel, (IntPtr)start, (IntPtr)end);
+        NativeInput.SendMessageIntCrossThread(hwnd, EditSetSel, (IntPtr)start, (IntPtr)end);
     }
 
     private static string? ReadRichEditSelectedText(IntPtr hwnd, int selectedLength)
@@ -96,32 +104,20 @@ internal static class EditControlHelper
             return null;
 
         var buffer = new StringBuilder(selectedLength + 2);
-        SendMessageText(hwnd, RichGetSelText, (IntPtr)(selectedLength + 1), buffer);
+        NativeInput.SendMessageTextCrossThread(hwnd, RichGetSelText, (IntPtr)(selectedLength + 1), buffer);
         return buffer.ToString();
     }
 
     private static string? ReadClassicEditText(IntPtr hwnd)
     {
-        var length = (int)SendMessageInt(hwnd, EditGetTextLength, IntPtr.Zero, IntPtr.Zero);
+        var length = (int)NativeInput.SendMessageIntCrossThread(hwnd, EditGetTextLength, IntPtr.Zero, IntPtr.Zero);
         if (length <= 0)
             return string.Empty;
 
         var buffer = new StringBuilder(length + 1);
-        SendMessageText(hwnd, EditGetText, (IntPtr)(length + 1), buffer);
+        NativeInput.SendMessageTextCrossThread(hwnd, EditGetText, (IntPtr)(length + 1), buffer);
         return buffer.ToString();
     }
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
-    private static extern IntPtr SendMessageInt(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
-    private static extern IntPtr SendMessageText(IntPtr hWnd, int msg, IntPtr wParam, StringBuilder lParam);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
-    private static extern IntPtr SendMessageReplace(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
-    private static extern IntPtr SendMessageRef(IntPtr hWnd, int msg, ref int wParam, ref int lParam);
 }
 
 internal readonly record struct SelectionReadResult(string Text, int SelStart, int SelEnd);

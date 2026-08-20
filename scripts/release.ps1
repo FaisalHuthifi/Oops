@@ -2,7 +2,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path $PSScriptRoot -Parent
-$version = "v1.0.4"
+$version = "v1.0.5"
 $publishDir = Join-Path $root "publish"
 $exe = Join-Path $publishDir "Oops.exe"
 $zip = Join-Path $publishDir "Oops-win-x64.zip"
@@ -59,21 +59,20 @@ gh release create $version $exe $zip `
 
 Fix text typed with the wrong keyboard layout (Arabic <-> English).
 
+### Fixes in v1.0.5
+- **The clipboard is never touched.** All copy/paste code was removed, so your clipboard and Win+V clipboard history stay exactly as you left them
+- **Works in any editable text field** — browsers, Office, chat and Electron apps, address bars and search boxes — not just Notepad
+- Replacement is verified before reporting success, so you no longer get a "Text converted" notification when nothing changed
+- Read-only fields are detected and skipped instead of receiving stray text
+- Support for more native rich text controls
+
 ### Fixes in v1.0.4
 - Fix Ctrl+I not firing (use WinForms message window for hotkey delivery)
-- Fix clipboard corruption (single WinForms clipboard API, no probe marker)
-- Improve copy/paste and replace reliability across apps
+- Improve replace reliability across apps
 
 ### Fixes in v1.0.3
 - Fix crash on startup in downloaded single-file exe (replace WPF hidden window with native Win32)
-- Extract native libraries correctly in single-file publish
 - Works when run from OneDrive or folders with non-English names
-
-### Fixes in v1.0.2
-- Embed keyboard map inside the exe (works when only Oops.exe is downloaded)
-- Show a startup notification so you know the app is running in the tray
-- Show an error dialog if startup fails
-- Release zip includes HOWTO.txt with Unblock / SmartScreen steps
 
 ### How to use
 1. Download **Oops.exe** or **Oops-win-x64.zip** below

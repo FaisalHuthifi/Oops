@@ -7,9 +7,11 @@ A lightweight Windows tray app that fixes text typed with the wrong keyboard lay
 1. Type text with the wrong keyboard layout
 2. Select the text
 3. Press **Ctrl + I**
-4. The selected text is instantly converted and replaced
+4. The selected text is instantly converted and replaced in place (Oops never uses the Windows clipboard)
 
-Your clipboard is preserved — Oops saves it before conversion and restores it afterward.
+Works in any editable text surface — Notepad, Office, browsers, chat and Electron apps,
+search boxes and address bars — using three replacement strategies in order: native Win32
+edit messages, Unicode keystrokes over the live selection, and UI Automation.
 
 ## Examples
 

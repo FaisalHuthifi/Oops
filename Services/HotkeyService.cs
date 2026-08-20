@@ -66,7 +66,7 @@ public sealed class HotkeyService : IDisposable
     private void OnConvertMessage(IntPtr targetWindow)
     {
         var dispatcher = System.Windows.Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
-        dispatcher.BeginInvoke(() =>
+        dispatcher.Invoke(() =>
         {
             HotkeyPressed?.Invoke(this, new HotkeyPressedEventArgs
             {

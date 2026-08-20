@@ -4,63 +4,82 @@ using System.Windows.Automation;
 
 namespace Oops.Services;
 
-public enum SelectionSource
-{
-    Win32Edit,
-    Clipboard
-}
-
 public sealed record SelectionInfo
 {
     public required string Text { get; init; }
-    public required SelectionSource Source { get; init; }
     public IntPtr EditHandle { get; init; }
     public string EditClassName { get; init; } = "";
     public int SelStart { get; init; }
     public int SelEnd { get; init; }
+    public AutomationElement? AutomationTarget { get; init; }
     public IntPtr TargetWindow { get; init; }
 
-    public bool TryReplace(string newText, ClipboardService clipboard)
+    public bool TryReplace(string newText)
     {
-        if (Source == SelectionSource.Win32Edit && EditHandle != IntPtr.Zero)
+        if (EditHandle != IntPtr.Zero &&
+            !string.IsNullOrEmpty(EditClassName) &&
+            EditControlHelper.TryReplace(EditHandle, EditClassName, SelStart, SelEnd, newText))
         {
-            return EditControlHelper.TryReplace(
-                EditHandle,
-                EditClassName,
-                SelStart,
-                SelEnd,
-                newText);
-        }
-
-        var snapshot = clipboard.Capture();
-
-        try
-        {
-            if (!clipboard.TrySetText(newText))
-                return false;
-
-            Thread.Sleep(40);
-            NativeInput.TryWmPaste(TargetWindow);
-            Thread.Sleep(20);
             return true;
         }
-        finally
+
+        // Typing over the live selection works in browsers, Electron apps, Office
+        // and anything else that accepts keyboard input, without the clipboard.
+        if (TryTypeOverSelection(newText))
+            return true;
+
+        return AutomationTarget != null &&
+               AutomationHelper.TryReplaceSelection(AutomationTarget, Text, newText);
+    }
+
+    private bool TryTypeOverSelection(string newText)
+    {
+        var window = TargetWindow != IntPtr.Zero ? TargetWindow : EditHandle;
+        if (!NativeInput.IsForeground(window))
+            return false;
+
+        if (AutomationTarget != null && AutomationHelper.IsReadOnly(AutomationTarget))
+            return false;
+
+        if (!NativeInput.SendUnicodeText(newText))
+            return false;
+
+        return VerifyTyped(newText);
+    }
+
+    private bool VerifyTyped(string newText)
+    {
+        // Give the target app time to process the synthesized keystrokes.
+        for (var attempt = 0; attempt < 12; attempt++)
         {
-            clipboard.Restore(snapshot);
+            Thread.Sleep(25);
+
+            if (EditHandle != IntPtr.Zero && EditControlHelper.ContainsText(EditHandle, newText))
+                return true;
+
+            if (AutomationTarget == null)
+                continue;
+
+            var confirmed = AutomationHelper.TryConfirmText(AutomationTarget, newText);
+            if (confirmed == true)
+                return true;
+
+            // The surface exposes no readable text, so the keystrokes cannot be
+            // verified; a dispatched batch is the best signal available.
+            if (confirmed == null)
+                return true;
         }
+
+        return false;
     }
 }
 
 public sealed class SelectionService
 {
-    private readonly ClipboardService _clipboard;
     private readonly IntPtr _ownWindowHandle;
 
-    public SelectionService(ClipboardService clipboard, IntPtr ownWindowHandle)
-    {
-        _clipboard = clipboard;
+    public SelectionService(IntPtr ownWindowHandle) =>
         _ownWindowHandle = ownWindowHandle;
-    }
 
     public IntPtr ResolveTargetWindow(IntPtr capturedWindow)
     {
@@ -68,7 +87,7 @@ public sealed class SelectionService
             capturedWindow = IntPtr.Zero;
 
         if (capturedWindow == IntPtr.Zero)
-            capturedWindow = GetForegroundWindow();
+            capturedWindow = NativeInput.GetForegroundWindow();
 
         if (capturedWindow == _ownWindowHandle)
             return IntPtr.Zero;
@@ -85,39 +104,18 @@ public sealed class SelectionService
             return null;
 
         var focused = NativeInput.GetFocusedWindow(targetWindow);
-
         if (focused != IntPtr.Zero)
         {
-            var win32 = TryGetWin32EditSelection(focused);
-            if (win32 != null)
-                return win32 with { TargetWindow = targetWindow };
+            var fromFocused = TryGetWin32EditSelection(focused);
+            if (fromFocused != null)
+                return fromFocused;
         }
 
-        var childWin32 = TryGetWin32EditSelection(targetWindow);
-        if (childWin32 != null)
-            return childWin32 with { TargetWindow = targetWindow };
+        var fromTarget = TryFindEditSelectionInWindow(targetWindow);
+        if (fromTarget != null)
+            return fromTarget;
 
-        var automationText = TryGetAutomationSelection();
-        if (!string.IsNullOrWhiteSpace(automationText))
-        {
-            return new SelectionInfo
-            {
-                Text = automationText,
-                Source = SelectionSource.Clipboard,
-                TargetWindow = targetWindow
-            };
-        }
-
-        var clipboardText = TryGetSelectionViaClipboard(targetWindow);
-        if (string.IsNullOrWhiteSpace(clipboardText))
-            return null;
-
-        return new SelectionInfo
-        {
-            Text = clipboardText,
-            Source = SelectionSource.Clipboard,
-            TargetWindow = targetWindow
-        };
+        return TryGetSelectionViaAutomation(targetWindow);
     }
 
     private SelectionInfo? TryGetWin32EditSelection(IntPtr hwnd)
@@ -129,65 +127,34 @@ public sealed class SelectionService
             {
                 var read = EditControlHelper.ReadSelection(current, className);
                 if (read is { } selection)
-                {
-                    return new SelectionInfo
-                    {
-                        Text = selection.Text,
-                        Source = SelectionSource.Win32Edit,
-                        EditHandle = current,
-                        EditClassName = className,
-                        SelStart = selection.SelStart,
-                        SelEnd = selection.SelEnd
-                    };
-                }
+                    return ToWin32Selection(selection, current, className);
             }
 
-            var child = FindEditChild(current);
+            var child = FindEditChildDeep(current);
             if (child == IntPtr.Zero)
                 continue;
 
             var childClass = ReadWindowClassName(child);
             var childRead = EditControlHelper.ReadSelection(child, childClass);
             if (childRead is { } childSelection)
-            {
-                return new SelectionInfo
-                {
-                    Text = childSelection.Text,
-                    Source = SelectionSource.Win32Edit,
-                    EditHandle = child,
-                    EditClassName = childClass,
-                    SelStart = childSelection.SelStart,
-                    SelEnd = childSelection.SelEnd
-                };
-            }
+                return ToWin32Selection(childSelection, child, childClass);
         }
 
         return null;
     }
 
-    private static IntPtr FindEditChild(IntPtr parent)
+    private static SelectionInfo? TryFindEditSelectionInWindow(IntPtr targetWindow)
     {
-        IntPtr result = IntPtr.Zero;
-        EnumChildWindows(parent, (child, _) =>
-        {
-            if (!EditControlHelper.IsEditClassName(ReadWindowClassNameStatic(child)))
-                return true;
+        var edit = FindEditChildDeep(targetWindow);
+        if (edit == IntPtr.Zero)
+            return null;
 
-            result = child;
-            return false;
-        }, IntPtr.Zero);
-
-        return result;
+        var className = ReadWindowClassName(edit);
+        var read = EditControlHelper.ReadSelection(edit, className);
+        return read is { } selection ? ToWin32Selection(selection, edit, className) : null;
     }
 
-    private static string ReadWindowClassNameStatic(IntPtr hwnd)
-    {
-        var buffer = new StringBuilder(256);
-        _ = GetClassNameW(hwnd, buffer, buffer.Capacity);
-        return buffer.ToString();
-    }
-
-    private static string? TryGetAutomationSelection()
+    private static SelectionInfo? TryGetSelectionViaAutomation(IntPtr targetWindow)
     {
         try
         {
@@ -195,16 +162,33 @@ public sealed class SelectionService
             if (focused == null)
                 return null;
 
-            var fromFocused = ReadAutomationSelection(focused);
-            if (!string.IsNullOrWhiteSpace(fromFocused))
-                return fromFocused;
-
-            var walker = TreeWalker.ControlViewWalker;
-            for (var parent = walker.GetParent(focused); parent != null; parent = walker.GetParent(parent))
+            foreach (var element in WalkElements(focused))
             {
-                var fromParent = ReadAutomationSelection(parent);
-                if (!string.IsNullOrWhiteSpace(fromParent))
-                    return fromParent;
+                var text = AutomationHelper.ReadSelection(element);
+                if (string.IsNullOrWhiteSpace(text))
+                    continue;
+
+                var hwnd = new IntPtr(element.Current.NativeWindowHandle);
+                if (hwnd != IntPtr.Zero)
+                {
+                    var className = ReadWindowClassName(hwnd);
+                    if (EditControlHelper.IsEditClassName(className))
+                    {
+                        var read = EditControlHelper.ReadSelection(hwnd, className);
+                        if (read is { } win32Selection &&
+                            string.Equals(win32Selection.Text, text, StringComparison.Ordinal))
+                        {
+                            return ToWin32Selection(win32Selection, hwnd, className);
+                        }
+                    }
+                }
+
+                return new SelectionInfo
+                {
+                    Text = text,
+                    AutomationTarget = element,
+                    TargetWindow = targetWindow
+                };
             }
         }
         catch
@@ -215,46 +199,52 @@ public sealed class SelectionService
         return null;
     }
 
-    private static string? ReadAutomationSelection(AutomationElement element)
+    private static IEnumerable<AutomationElement> WalkElements(AutomationElement start)
     {
-        if (!element.TryGetCurrentPattern(TextPattern.Pattern, out var patternObject))
-            return null;
+        yield return start;
 
-        var textPattern = (TextPattern)patternObject;
-        var ranges = textPattern.GetSelection();
-        if (ranges == null || ranges.Length == 0)
-            return null;
-
-        var text = ranges[0].GetText(-1);
-        return string.IsNullOrWhiteSpace(text) ? null : text;
+        var walker = TreeWalker.ControlViewWalker;
+        for (var parent = walker.GetParent(start); parent != null; parent = walker.GetParent(parent))
+            yield return parent;
     }
 
-    private string? TryGetSelectionViaClipboard(IntPtr targetWindow)
-    {
-        var snapshot = _clipboard.Capture();
-        var beforeText = _clipboard.TryGetText() ?? string.Empty;
-
-        try
+    private static SelectionInfo ToWin32Selection(
+        SelectionReadResult read,
+        IntPtr handle,
+        string className) =>
+        new()
         {
-            NativeInput.TryWmCopy(targetWindow);
+            Text = read.Text,
+            EditHandle = handle,
+            EditClassName = className,
+            SelStart = read.SelStart,
+            SelEnd = read.SelEnd,
+            TargetWindow = handle
+        };
 
-            for (var attempt = 0; attempt < 8; attempt++)
+    private static IntPtr FindEditChildDeep(IntPtr parent)
+    {
+        IntPtr found = IntPtr.Zero;
+        EnumChildWindows(parent, (child, _) =>
+        {
+            var className = ReadWindowClassName(child);
+            if (EditControlHelper.IsEditClassName(className))
             {
-                Thread.Sleep(30);
-                var text = _clipboard.TryGetText();
-                if (string.IsNullOrWhiteSpace(text))
-                    continue;
-
-                if (!string.Equals(text, beforeText, StringComparison.Ordinal))
-                    return text;
+                found = child;
+                return false;
             }
 
-            return null;
-        }
-        finally
-        {
-            _clipboard.Restore(snapshot);
-        }
+            var nested = FindEditChildDeep(child);
+            if (nested != IntPtr.Zero)
+            {
+                found = nested;
+                return false;
+            }
+
+            return true;
+        }, IntPtr.Zero);
+
+        return found;
     }
 
     private static string ReadWindowClassName(IntPtr hwnd)
@@ -271,9 +261,6 @@ public sealed class SelectionService
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetClassNameW")]
     private static extern int GetClassNameW(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
-
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetParent(IntPtr hWnd);

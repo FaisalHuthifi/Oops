@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace Oops;
 
@@ -14,24 +15,24 @@ internal static class NativeInput
         return GetGUIThreadInfo(threadId, ref info) ? info.hwndFocus : IntPtr.Zero;
     }
 
-    internal static void TryWmCopy(IntPtr targetWindow)
+    internal static IntPtr SendMessageIntCrossThread(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam)
     {
-        TryFocusWindow(targetWindow);
-        var hwnd = ResolveMessageTarget(targetWindow);
-        if (hwnd != IntPtr.Zero)
-            SendMessageCrossThread(hwnd, NativeConstants.WM_COPY);
+        IntPtr result = IntPtr.Zero;
+        WithThreadInput(hwnd, () => result = SendMessage(hwnd, message, wParam, lParam));
+        return result;
     }
 
-    internal static void TryWmPaste(IntPtr targetWindow)
-    {
-        TryFocusWindow(targetWindow);
-        var hwnd = ResolveMessageTarget(targetWindow);
-        if (hwnd != IntPtr.Zero)
-            SendMessageCrossThread(hwnd, NativeConstants.WM_PASTE);
-    }
+    internal static void SendMessageTextCrossThread(IntPtr hwnd, int message, IntPtr wParam, StringBuilder lParam) =>
+        WithThreadInput(hwnd, () => SendMessageText(hwnd, message, wParam, lParam));
 
-    internal static void SendMessageCrossThread(IntPtr hwnd, int message) =>
-        WithThreadInput(hwnd, () => SendMessage(hwnd, message, IntPtr.Zero, IntPtr.Zero));
+    internal static void SendMessageRefCrossThread(IntPtr hwnd, int message, ref int wParam, ref int lParam)
+    {
+        var w = wParam;
+        var l = lParam;
+        WithThreadInput(hwnd, () => SendMessageRef(hwnd, message, ref w, ref l));
+        wParam = w;
+        lParam = l;
+    }
 
     internal static void SendMessageCrossThread(IntPtr hwnd, int message, IntPtr wParam, string lParam) =>
         WithThreadInput(hwnd, () => SendMessageReplace(hwnd, message, wParam, lParam));
@@ -56,22 +57,57 @@ internal static class NativeInput
         }
     }
 
-    private static void TryFocusWindow(IntPtr targetWindow)
+    /// <summary>
+    /// Types text as Unicode key events, replacing whatever is selected in the
+    /// focused control. Works in any surface that accepts keyboard input.
+    /// </summary>
+    internal static bool SendUnicodeText(string text)
     {
-        if (targetWindow != IntPtr.Zero)
-            SetForegroundWindow(targetWindow);
+        if (string.IsNullOrEmpty(text))
+            return false;
+
+        var inputs = new INPUT[text.Length * 2];
+
+        for (var i = 0; i < text.Length; i++)
+        {
+            inputs[i * 2] = CreateUnicodeInput(text[i], keyUp: false);
+            inputs[i * 2 + 1] = CreateUnicodeInput(text[i], keyUp: true);
+        }
+
+        var sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
+        return sent == inputs.Length;
     }
 
-    private static IntPtr ResolveMessageTarget(IntPtr targetWindow)
-    {
-        if (targetWindow == IntPtr.Zero)
-            return IntPtr.Zero;
+    internal static IntPtr GetRootWindow(IntPtr hwnd) =>
+        hwnd == IntPtr.Zero ? IntPtr.Zero : GetAncestor(hwnd, GA_ROOT);
 
-        var focused = GetFocusedWindow(targetWindow);
-        return focused != IntPtr.Zero ? focused : targetWindow;
+    internal static bool IsForeground(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+            return false;
+
+        var foreground = GetRootWindow(GetForegroundWindow());
+        return foreground != IntPtr.Zero && foreground == GetRootWindow(hwnd);
     }
 
-    private static void WithThreadInput(IntPtr hwnd, Action action)
+    private static INPUT CreateUnicodeInput(char character, bool keyUp) =>
+        new()
+        {
+            type = INPUT_KEYBOARD,
+            union = new INPUTUNION
+            {
+                keyboard = new KEYBDINPUT
+                {
+                    wVk = 0,
+                    wScan = character,
+                    dwFlags = KEYEVENTF_UNICODE | (keyUp ? KEYEVENTF_KEYUP : 0u),
+                    time = 0,
+                    dwExtraInfo = IntPtr.Zero
+                }
+            }
+        };
+
+    internal static void WithThreadInput(IntPtr hwnd, Action action)
     {
         var targetThreadId = GetWindowThreadProcessId(hwnd, out _);
         var currentThreadId = GetCurrentThreadId();
@@ -91,11 +127,19 @@ internal static class NativeInput
         }
     }
 
-    [DllImport("user32.dll")]
-    private static extern bool SetForegroundWindow(IntPtr hWnd);
+    private const uint INPUT_KEYBOARD = 1;
+    private const uint KEYEVENTF_KEYUP = 0x0002;
+    private const uint KEYEVENTF_UNICODE = 0x0004;
+    private const uint GA_ROOT = 2;
 
     [DllImport("user32.dll")]
     internal static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(uint numberOfInputs, INPUT[] inputs, int sizeOfInput);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint processId);
@@ -116,7 +160,57 @@ internal static class NativeInput
     private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
+    private static extern IntPtr SendMessageText(IntPtr hWnd, int msg, IntPtr wParam, StringBuilder lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
     private static extern IntPtr SendMessageReplace(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "SendMessageW")]
+    private static extern IntPtr SendMessageRef(IntPtr hWnd, int msg, ref int wParam, ref int lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct INPUT
+    {
+        public uint type;
+        public INPUTUNION union;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct INPUTUNION
+    {
+        [FieldOffset(0)] public MOUSEINPUT mouse;
+        [FieldOffset(0)] public KEYBDINPUT keyboard;
+        [FieldOffset(0)] public HARDWAREINPUT hardware;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MOUSEINPUT
+    {
+        public int dx;
+        public int dy;
+        public uint mouseData;
+        public uint dwFlags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KEYBDINPUT
+    {
+        public ushort wVk;
+        public ushort wScan;
+        public uint dwFlags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct HARDWAREINPUT
+    {
+        public uint uMsg;
+        public ushort wParamL;
+        public ushort wParamH;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct GUITHREADINFO

@@ -11,7 +11,4 @@ public static class NativeConstants
     public const ushort VK_CONTROL = 0x11;
     public const ushort VK_SHIFT = 0x10;
     public const ushort VK_MENU = 0x12; // Alt
-
-    public const int WM_COPY = 0x0301;
-    public const int WM_PASTE = 0x0302;
 }

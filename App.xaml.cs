@@ -97,10 +97,8 @@ public partial class App : Application
 
         _hotkeyService.HotkeyPressed += OnHotkeyPressed;
 
-        var clipboard = new ClipboardService();
-        var selection = new SelectionService(clipboard, _hotkeyService.WindowHandle);
+        var selection = new SelectionService(_hotkeyService.WindowHandle);
         _replaceService = new ReplaceService(
-            clipboard,
             selection,
             new TextConverter(),
             _settings);
@@ -130,8 +128,8 @@ public partial class App : Application
             case ReplaceResult.NoSelection:
                 _trayIcon?.ShowBalloon("Oops", "No text selected.");
                 break;
-            case ReplaceResult.ClipboardFailed:
-                _trayIcon?.ShowBalloon("Oops", "Could not access clipboard.");
+            case ReplaceResult.ReplaceFailed:
+                _trayIcon?.ShowBalloon("Oops", "Could not replace selected text.");
                 break;
             case ReplaceResult.Unchanged:
                 _trayIcon?.ShowBalloon("Oops", "Text does not need conversion.");
