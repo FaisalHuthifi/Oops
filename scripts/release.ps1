@@ -10,7 +10,7 @@ $howto = Join-Path $publishDir "HOWTO.txt"
 
 Write-Host "Building release..."
 Push-Location $root
-dotnet publish Oops.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $publishDir
+dotnet publish src\Oops.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $publishDir
 Pop-Location
 
 if (-not (Test-Path $exe)) {
@@ -51,10 +51,8 @@ if (-not $repo) {
     Pop-Location
 }
 
-gh release create $version $exe $zip `
-    --repo $repo `
-    --title "Oops $version" `
-    --notes @"
+$notesFile = Join-Path $publishDir "RELEASE_NOTES.md"
+@"
 ## Oops $version
 
 Fix text typed with the wrong keyboard layout (Arabic <-> English).
@@ -86,9 +84,15 @@ Fix text typed with the wrong keyboard layout (Arabic <-> English).
 
 ### Notes
 Windows SmartScreen may warn on first run (unsigned app) — click **More info** -> **Run anyway**.
-"@
+"@ | Set-Content -Path $notesFile -Encoding UTF8
 
 if (-not $repo) {
     $repo = gh repo view --json nameWithOwner -q .nameWithOwner
 }
+
+gh release create $version $exe $zip --repo $repo --title "Oops $version" --notes-file $notesFile
+if ($LASTEXITCODE -ne 0) {
+    throw "gh release create failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "Done! Release: https://github.com/$repo/releases/tag/$version"

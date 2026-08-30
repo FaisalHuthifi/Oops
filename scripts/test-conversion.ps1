@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path $PSScriptRoot -Parent
-$oopsExe = Join-Path $root "bin\Release\net8.0-windows\Oops.exe"
+$oopsExe = Join-Path $root "src\bin\Release\net8.0-windows\Oops.exe"
 $inputText = [char]0x0627 + [char]0x062B + [char]0x0645 + [char]0x0645 + [char]0x062E
 $expected = "hello"
 

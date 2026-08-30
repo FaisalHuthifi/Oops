@@ -42,7 +42,7 @@ Requires [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0):
 ```powershell
 git clone https://github.com/FaisalHuthifi/Oops.git
 cd Oops
-dotnet run --project Oops.csproj
+dotnet run --project src/Oops.csproj
 ```
 
 Publish a standalone executable:
@@ -51,7 +51,7 @@ Publish a standalone executable:
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 ```
 
-Output: `bin\Release\net8.0-windows\win-x64\publish\Oops.exe`
+Output: `src\bin\Release\net8.0-windows\win-x64\publish\Oops.exe`
 
 ## Settings
 
