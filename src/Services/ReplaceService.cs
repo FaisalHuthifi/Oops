@@ -1,0 +1,62 @@
+using System.Media;
+using Oops.Settings;
+
+namespace Oops.Services;
+
+public sealed class ReplaceService
+{
+    private readonly SelectionService _selection;
+    private readonly TextConverter _converter;
+    private readonly AppSettings _settings;
+
+    private IntPtr _targetWindow;
+
+    public ReplaceService(SelectionService selection, TextConverter converter, AppSettings settings)
+    {
+        _selection = selection;
+        _converter = converter;
+        _settings = settings;
+    }
+
+    public void PrepareTargetWindow(IntPtr targetWindow) =>
+        _targetWindow = _selection.ResolveTargetWindow(targetWindow);
+
+    public ReplaceResult TryConvertSelection()
+    {
+        if (!_settings.Enabled)
+            return ReplaceResult.Disabled;
+
+        try
+        {
+            var selection = _selection.TryGetSelection(_targetWindow);
+            if (selection == null || string.IsNullOrWhiteSpace(selection.Text))
+                return ReplaceResult.NoSelection;
+
+            var converted = _converter.Convert(selection.Text);
+            if (converted == selection.Text)
+                return ReplaceResult.Unchanged;
+
+            if (!selection.TryReplace(converted))
+                return ReplaceResult.ReplaceFailed;
+
+            if (_settings.PlaySound)
+                SystemSounds.Asterisk.Play();
+
+            return ReplaceResult.Success;
+        }
+        catch
+        {
+            return ReplaceResult.Failed;
+        }
+    }
+}
+
+public enum ReplaceResult
+{
+    Success,
+    NoSelection,
+    Unchanged,
+    Disabled,
+    ReplaceFailed,
+    Failed
+}
